@@ -1,0 +1,9 @@
+[Totem Plugin]
+Loader=python
+Module=sleep
+IAge=1
+Name=Sleep
+Description=Shutdown or hibernate the system when the playlist has finished.
+Authors=Stefan Blanke
+Copyright=Copyright © 2010 Stefan Blanke
+Website=http://todo
