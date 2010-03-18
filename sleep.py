@@ -2,6 +2,34 @@ import totem
 import gobject, gtk, gtk.glade
 import os, threading, time, dbus
 
+"""
+TODO
+
+* Improve finished playing state detection.
+	At present can't cope with DVDs because they don't stop, they play title screen
+	Special case for when playing DVD?
+
+* Fix thread joining to allow stopping sleep mode and starting again (from either pre or post timeout dialog)
+
+
+"""
+
+
+# Seconds between checks of Totem state
+POLLING_PERIOD = 5
+# Seconds warning dialog is displayed before action
+WARNING_TIMEOUT = 120
+
+# Enable testing mode (does not call real action)
+#TESTING = True
+TESTING = False
+
+# State constants
+SLEEP_MODE_DISABLED = "disabled"
+SLEEP_MODE_SHUTDOWN = "shutdown"
+SLEEP_MODE_HIBERNATE = "hibernate"
+
+# Plugin menu metadata
 ui_str = """
 <ui>
   <menubar name="tmw-menubar">
@@ -14,63 +42,54 @@ ui_str = """
 </ui>
 """
 
-SLEEP_MODE_DISABLED = "disabled"
-SLEEP_MODE_SHUTDOWN = "shutdown"
-SLEEP_MODE_HIBERNATE = "hibernate"
 
-POLLING_PERIOD = 5
-WARNING_TIMEOUT = 120
-
-TESTING = True
-
-class WatcherThread(threading.Thread):
-	alive = False
+class SleepPlugin(totem.Plugin):
+	"""Main class for plugin"""
+	def __init__(self):
+		totem.Plugin.__init__(self)
 	
-	def __init__(self, totem_object, timeout_dialog):
-		self.totem_object = totem_object
-		self.timeout_dialog = timeout_dialog
+	def activate(self, totem_object):
 		
-		threading.Thread.__init__(self)
-	
-	def run(self):
-		self.alive = True
-		while self.alive:
-			#print "checking"
-			
-			if not self.totem_object.is_playing():
-				self.alive = False
-				self.timeout_dialog.show()
-				break
-			
-			time.sleep(POLLING_PERIOD)
-	
-	def terminate(self):
-		self.alive = False
-	
-
-
-class CountDown(threading.Thread):
-	def __init__(self, parent):
-		self.parent = parent
-		self.alive = True
+		data = dict()
+		manager = totem_object.get_ui_manager()
 		
-		threading.Thread.__init__(self)
+		data['action_group'] = gtk.ActionGroup('Python')
+		
+		action = gtk.Action('Sleep', 'Sleep', _('System Shutdown Menu'), None)
+		data['action_group'].add_action(action)
+		
+		action = gtk.Action('SleepConfigure', _('_Configure'), _("Show Totem's Python console"), 'gnome-mime-text-x-python')
+		action.connect('activate', self.show_config, totem_object)
+		
+		data['action_group'].add_action(action)
+		
+		manager.insert_action_group(data['action_group'], 0)
+		data['ui_id'] = manager.add_ui_from_string(ui_str)
+		manager.ensure_update()
+		
+		totem_object.set_data('ShutdownPluginInfo', data)
+		
+		self.timeout_dialog = TimeoutDialog(totem_object)
+		self.watcher = WatcherThread(totem_object, self.timeout_dialog)
+		self.config_dialog = ConfigDialog(self.watcher)
 	
-	def run(self):
-		while self.alive:
-			time.sleep(1)
-			self.parent.time -= 1
-			self.parent.update_time()
-			if self.parent.time <= 0:
-				self.alive = False
-				self.parent.window.hide()
-				self.parent.action()
+	def show_config(self, action, totem_object):
+		self.config_dialog.show(totem_object)
 	
-	def terminate(self):
-		self.alive = False
+	def deactivate(self, totem_object):
+		data = totem_object.get_data('ShutdownPluginInfo')
+		
+		manager = totem_object.get_ui_manager()
+		manager.remove_ui(data['ui_id'])
+		manager.remove_action_group(data['action_group'])
+		manager.ensure_update()
+		
+		totem_object.set_data('ShutdownPluginInfo', None)
+
+
 
 class TimeoutDialog:
-	
+	"""Dialog that displays warning and time remaining until action with options to take action now or cancel."""
 	def __init__(self, totem_object):
 		self.totem_object = totem_object
 		gladefile = os.path.join( os.path.dirname( os.path.abspath(__file__) ), "sleep.glade" )
@@ -95,7 +114,7 @@ class TimeoutDialog:
 		self.update_time()
 		self.button_now.set_label( "%s now" % mode.title() )
 		
-		self.countdown = CountDown(self)
+		self.countdown = CountdownThread(self)
 		self.countdown.start()
 		
 		self.window.show()
@@ -110,6 +129,8 @@ class TimeoutDialog:
 	
 	def action(self):
 		mode = self.totem_object.get_data('SleepPluginMode')
+		self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_DISABLED)
+		
 		if mode == SLEEP_MODE_SHUTDOWN:
 			print "todo shutdown"
 		
@@ -133,16 +154,19 @@ class TimeoutDialog:
 		self.action()
 		self.window.hide()
 	
-	
 	def on_clicked_cancel(self, widget):
 		if self.countdown.alive:
 			self.countdown.terminate()
 			self.countdown.join()
 		
+		self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_DISABLED)
+		
 		self.window.hide()
 
+
+
 class ConfigDialog:
-	
+	"""Dialog for enabling and configuring sleep"""
 	def __init__(self, watcher):
 		self.watcher = watcher
 		gladefile = os.path.join( os.path.dirname( os.path.abspath(__file__) ), "sleep.glade" )
@@ -179,11 +203,12 @@ class ConfigDialog:
 	
 	def on_clicked_ok(self, widget):
 		
+		if self.watcher.alive:
+			self.watcher.terminate()
+			self.watcher.join()
+		
 		if self.radio_disabled.get_active():
 			self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_DISABLED)
-			if self.watcher.alive:
-				self.watcher.terminate()
-				self.watcher.join()
 		else:
 			if self.radio_shutdown.get_active():
 				self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_SHUTDOWN)
@@ -194,71 +219,63 @@ class ConfigDialog:
 			if self.watcher.alive:
 				print "error, still there"
 			
-			#print "start watcher"
 			self.watcher.start()
 		
 		self.window.hide()
 	
-	
 	def on_clicked_cancel(self, widget):
-		#print "cancel"
 		self.window.hide()
 
-class SleepPlugin(totem.Plugin):
 
-	def __init__(self):
-		totem.Plugin.__init__(self)
 
-	def activate(self, totem_object):
-		#print "Activating sample Python plugin"
-		#totem.action_fullscreen_toggle()
-		
-		data = dict()
-		manager = totem_object.get_ui_manager()
-
-		data['action_group'] = gtk.ActionGroup('Python')
-		
-		action = gtk.Action('Sleep', 'Sleep', _('System Shutdown Menu'), None)
-		data['action_group'].add_action(action)
-
-		action = gtk.Action('SleepConfigure', _('_Configure'),
-		                    _("Show Totem's Python console"),
-		                    'gnome-mime-text-x-python')
-		action.connect('activate', self.show_config, totem_object)
-		# make this a tickable
-		data['action_group'].add_action(action)
-
-		
-		manager.insert_action_group(data['action_group'], 0)
-		data['ui_id'] = manager.add_ui_from_string(ui_str)
-		manager.ensure_update()
-		
-		totem_object.set_data('ShutdownPluginInfo', data)
-		
-		self.timeout_dialog = TimeoutDialog(totem_object)
-		self.watcher = WatcherThread(totem_object, self.timeout_dialog)
-		self.config_dialog = ConfigDialog(self.watcher)
-		
-		
+class WatcherThread(threading.Thread):
+	"""Watches the Totom play state and displayes timeout dialog when Totem is in a known finished playing state"""
+	alive = False
 	
-	def show_config(self, action, totem_object):
-		self.config_dialog.show(totem_object)
-		#self.timeout_dialog.show(totem_object)
+	def __init__(self, totem_object, timeout_dialog):
+		self.totem_object = totem_object
+		self.timeout_dialog = timeout_dialog
+		
+		threading.Thread.__init__(self)
 	
-	def deactivate(self, totem_object):
-		#print "Deactivating sample Python plugin"
+	def run(self):
+		self.alive = True
+		while self.alive:
+			
+			if not self.totem_object.is_playing():
+				self.alive = False
+				self.timeout_dialog.show()
+				break
+			
+			time.sleep(POLLING_PERIOD)
+		print "watcher gone"
 		
-		data = totem_object.get_data('ShutdownPluginInfo')
+	def terminate(self):
+		self.alive = False
 
-		manager = totem_object.get_ui_manager()
-		manager.remove_ui(data['ui_id'])
-		manager.remove_action_group(data['action_group'])
-		manager.ensure_update()
 
-		totem_object.set_data('ShutdownPluginInfo', None)
+
+class CountdownThread(threading.Thread):
+	"""Updates time remaining in TimeoutDialog and calls action when time reaches zero."""
+	def __init__(self, parent):
+		self.parent = parent
+		self.alive = True
 		
-		#if self.window is not None:
-		#	self.window.destroy()
+		threading.Thread.__init__(self)
+	
+	def run(self):
+		while self.alive:
+			time.sleep(1)
+			self.parent.time -= 1
+			self.parent.update_time()
+			if self.parent.time <= 0:
+				self.alive = False
+				self.parent.window.hide()
+				self.parent.action()
+	
+	def terminate(self):
+		self.alive = False
+
 
 
 
