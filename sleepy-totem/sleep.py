@@ -2,19 +2,6 @@ import totem
 import gobject, gtk, gtk.glade
 import os, threading, time, dbus, math
 
-"""
-TODO
-
-* Fix thread joining to allow stopping sleep mode and starting again (from either pre or post timeout dialog)
-
-* Get some nice tickable gtk menus
-
-* Move timeout to config box
-
-* Write README
-
-"""
-
 
 # Seconds between checks of Totem state
 POLLING_PERIOD = 5
