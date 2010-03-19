@@ -5,12 +5,13 @@ import os, threading, time, dbus
 """
 TODO
 
-* Improve finished playing state detection.
-	At present can't cope with DVDs because they don't stop, they play title screen
-	Special case for when playing DVD?
-
 * Fix thread joining to allow stopping sleep mode and starting again (from either pre or post timeout dialog)
 
+* Get some nice tickable gtk menus
+
+* Move timeout to config box
+
+* Write README
 
 """
 
@@ -21,8 +22,8 @@ POLLING_PERIOD = 5
 WARNING_TIMEOUT = 120
 
 # Enable testing mode (does not call real action)
-#TESTING = True
-TESTING = False
+TESTING = True
+#TESTING = False
 
 # State constants
 SLEEP_MODE_DISABLED = "disabled"
@@ -124,7 +125,7 @@ class TimeoutDialog:
 		time_message = "%d seconds" % self.time
 		if self.time >= 60:
 			time_message = "%d minutes" % int( round(self.time / 60.0) )
-		
+		# TODO fix pluralisation
 		self.label_message.set_text( "This system will %s in %s." % (mode, time_message) )
 	
 	def action(self):
@@ -242,13 +243,22 @@ class WatcherThread(threading.Thread):
 		self.alive = True
 		while self.alive:
 			
-			if not self.totem_object.is_playing():
+			# If we are playing a DVD then we can't simply check that that playback has finished because 
+			# Totem will return to the menu which will loop. The time will however go beyond the length so
+			# we can detect this using this method. TODO need to test this with various DVDs.
+			
+			if self.totem_object.get_current_mrl().startswith("dvd://"):
+				video_playing = self.totem_object.get_property("current-time") <= self.totem_object.get_property("stream-length")
+			else:
+				video_playing = self.totem_object.is_playing()
+			
+			# If the video is not playing then shown the TimeoutDialog and finish this thread.
+			if not video_playing:
 				self.alive = False
 				self.timeout_dialog.show()
 				break
 			
 			time.sleep(POLLING_PERIOD)
-		print "watcher gone"
 		
 	def terminate(self):
 		self.alive = False
