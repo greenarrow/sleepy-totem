@@ -1,6 +1,6 @@
 import totem
 import gobject, gtk, gtk.glade
-import os, threading, time, dbus
+import os, threading, time, dbus, math
 
 """
 TODO
@@ -22,8 +22,8 @@ POLLING_PERIOD = 5
 WARNING_TIMEOUT = 120
 
 # Enable testing mode (does not call real action)
-TESTING = True
-#TESTING = False
+#TESTING = True
+TESTING = False
 
 # State constants
 SLEEP_MODE_DISABLED = "disabled"
@@ -42,6 +42,40 @@ ui_str = """
   </menubar>
 </ui>
 """
+
+
+def human_time(seconds):
+	"""Return human readable time string from time in seconds"""
+	hours = int( math.floor(seconds / 3600.0) )
+	seconds = seconds - hours * 3600
+	minutes = int( math.floor(seconds / 60.0) )
+	seconds = int(seconds - minutes * 60)
+	
+	time_parts = []
+	
+	if hours == 1:
+		time_parts.append("%d hour" % hours)
+	if hours > 1:
+		time_parts.append("%d hours" % hours)
+	
+	if minutes == 1:
+		time_parts.append("%d minute" % minutes)
+	if minutes > 1:
+		time_parts.append("%d minutes" % minutes)
+	
+	if seconds == 1:
+		time_parts.append("%d second" % seconds)
+	if seconds > 1:
+		time_parts.append("%d seconds" % seconds)
+	
+	if len(time_parts) == 1:
+		time_message = time_parts[0]
+	elif len(time_parts) == 2:
+		time_message = " and ".join(time_parts)
+	else:
+		time_message = ", ".join( time_parts[ :-1 ] ) + " and " + time_parts[-1]
+	
+	return time_message
 
 
 class SleepPlugin(totem.Plugin):
@@ -122,10 +156,9 @@ class TimeoutDialog:
 	
 	def update_time(self):
 		mode = self.totem_object.get_data('SleepPluginMode')
-		time_message = "%d seconds" % self.time
-		if self.time >= 60:
-			time_message = "%d minutes" % int( round(self.time / 60.0) )
-		# TODO fix pluralisation
+		
+		time_message = human_time(self.time)
+		
 		self.label_message.set_text( "This system will %s in %s." % (mode, time_message) )
 	
 	def action(self):
@@ -247,7 +280,7 @@ class WatcherThread(threading.Thread):
 			# Totem will return to the menu which will loop. The time will however go beyond the length so
 			# we can detect this using this method. TODO need to test this with various DVDs.
 			
-			if self.totem_object.get_current_mrl().startswith("dvd://"):
+			if self.totem_object.get_current_mrl() and self.totem_object.get_current_mrl().startswith("dvd://"):
 				video_playing = self.totem_object.get_property("current-time") <= self.totem_object.get_property("stream-length")
 			else:
 				video_playing = self.totem_object.is_playing()
