@@ -1,0 +1,19 @@
+Plugin for Totem movie player that can shutdown or hibernate the computer when the playlist finishes.
+
+To install in your home directory just run:
+$ chmod u+x install.sh
+$ ./install.sh
+
+Start Totem and open the plugin dialog from the Edit->Plugins menu
+Enable "Sleepy Totem"
+
+A new menu "Sleep" should now be added to Totem. 
+
+
+
+TODO
+
+* Fix thread joining to allow stopping sleep mode and starting again (from either pre or post timeout dialog)
+* Get some nice tickable gtk menus
+* Move timeout to config box
+* Write README
