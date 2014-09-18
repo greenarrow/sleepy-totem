@@ -1,6 +1,6 @@
-import totem
-import gobject, gtk, gtk.glade
+from gi.repository import GObject, Peas, Totem, Gtk # pylint: disable-msg=E0611
 import os, threading, time, dbus, math
+from __builtin__ import getattr
 
 
 # Seconds between checks of Totem state
@@ -65,22 +65,30 @@ def human_time(seconds):
 	return time_message
 
 
-class SleepPlugin(totem.Plugin):
+class SleepPlugin(GObject.Object, Peas.Activatable):
+
+	__gtype_name__ = 'StarterPlugin'
+        object = GObject.property (type = GObject.Object)
+
 	"""Main class for plugin"""
 	def __init__(self):
-		totem.Plugin.__init__(self)
+		GObject.Object.__init__(self)
+		self._totem = None
 	
-	def activate(self, totem_object):
+	def do_activate(self):
+		
+		self._totem = self.object
+		totem_object = self.object
 		
 		data = dict()
 		manager = totem_object.get_ui_manager()
 		
-		data['action_group'] = gtk.ActionGroup('Python')
+		data['action_group'] = Gtk.ActionGroup('Python')
 		
-		action = gtk.Action('Sleep', 'Sleep', _('System Shutdown Menu'), None)
+		action = Gtk.Action('Sleep', 'Sleep', _('System Shutdown Menu'), None)
 		data['action_group'].add_action(action)
 		
-		action = gtk.Action('SleepConfigure', _('_Configure'), _("Show Totem's Python console"), 'gnome-mime-text-x-python')
+		action = Gtk.Action('SleepConfigure', _('_Configure'), _("Show Totem's Python console"), 'gnome-mime-text-x-python')
 		action.connect('activate', self.show_config, totem_object)
 		
 		data['action_group'].add_action(action)
@@ -89,7 +97,7 @@ class SleepPlugin(totem.Plugin):
 		data['ui_id'] = manager.add_ui_from_string(ui_str)
 		manager.ensure_update()
 		
-		totem_object.set_data('ShutdownPluginInfo', data)
+		totem_object.ShutdownPluginInfo = data
 		
 		self.timeout_dialog = TimeoutDialog(totem_object)
 		self.watcher = WatcherThread(totem_object, self.timeout_dialog)
@@ -98,15 +106,16 @@ class SleepPlugin(totem.Plugin):
 	def show_config(self, action, totem_object):
 		self.config_dialog.show(totem_object)
 	
-	def deactivate(self, totem_object):
-		data = totem_object.get_data('ShutdownPluginInfo')
-		
-		manager = totem_object.get_ui_manager()
+	def do_deactivate(self):
+		data = getattr(self._totem,'ShutdownPluginInfo')
+        
+		manager = self._totem.get_ui_manager()
 		manager.remove_ui(data['ui_id'])
 		manager.remove_action_group(data['action_group'])
 		manager.ensure_update()
 		
-		totem_object.set_data('ShutdownPluginInfo', None)
+		self._totem.ShutdownPluginInfo = None
+		self._totem = None
 
 
 
@@ -114,23 +123,25 @@ class TimeoutDialog:
 	"""Dialog that displays warning and time remaining until action with options to take action now or cancel."""
 	def __init__(self, totem_object):
 		self.totem_object = totem_object
-		gladefile = os.path.join( os.path.dirname( os.path.abspath(__file__) ), "sleep.glade" )
+		gladefile = os.path.join( os.path.dirname( os.path.abspath(__file__) ), "timeout.gtk" )
 		
 		windowname = "window_timeout"
-		self.wTree = gtk.glade.XML(gladefile,windowname)
-		
-		dic = {	"on_button_now_clicked":self.on_clicked_now,
+		self.wTree = Gtk.Builder()
+		self.wTree.add_from_file(gladefile)
+
+		dic = {	
+			"on_button_now_clicked":self.on_clicked_now,
 			"on_button_cancel_clicked":self.on_clicked_cancel,
 		}
 		
-		self.wTree.signal_autoconnect(dic)
+		self.wTree.connect_signals(dic)
 		
-		self.window = self.wTree.get_widget(windowname)
-		self.label_message = self.wTree.get_widget("label_message")
-		self.button_now = self.wTree.get_widget("button_now")
+		self.window = self.wTree.get_object(windowname)
+		self.label_message = self.wTree.get_object("label_message")
+		self.button_now = self.wTree.get_object("button_now")
 	
 	def show(self):
-		mode = self.totem_object.get_data('SleepPluginMode')
+		mode = getattr(self.totem_object, 'SleepPluginMode')
 		self.time = WARNING_TIMEOUT
 		
 		self.update_time()
@@ -142,15 +153,15 @@ class TimeoutDialog:
 		self.window.show()
 	
 	def update_time(self):
-		mode = self.totem_object.get_data('SleepPluginMode')
+		mode = getattr(self.totem_object,'SleepPluginMode')
 		
 		time_message = human_time(self.time)
 		
 		self.label_message.set_text( "This system will %s in %s." % (mode, time_message) )
 	
 	def action(self):
-		mode = self.totem_object.get_data('SleepPluginMode')
-		self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_DISABLED)
+		mode = getattr(self.totem_object,'SleepPluginMode')
+		self.totem_object.SleepPluginMode = SLEEP_MODE_DISABLED
 		
 		if mode == SLEEP_MODE_SHUTDOWN:
 			print "todo shutdown"
@@ -180,7 +191,7 @@ class TimeoutDialog:
 			self.countdown.terminate()
 			self.countdown.join()
 		
-		self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_DISABLED)
+		self.totem_object.SleepPluginMode = SLEEP_MODE_DISABLED
 		
 		self.window.hide()
 
@@ -190,27 +201,29 @@ class ConfigDialog:
 	"""Dialog for enabling and configuring sleep"""
 	def __init__(self, watcher):
 		self.watcher = watcher
-		gladefile = os.path.join( os.path.dirname( os.path.abspath(__file__) ), "sleep.glade" )
+		gladefile = os.path.join( os.path.dirname( os.path.abspath(__file__) ), "sleep.gtk" )
 		
 		windowname = "window_config"
-		self.wTree = gtk.glade.XML(gladefile,windowname)
+		self.wTree = Gtk.Builder()
+		self.wTree.add_from_file(gladefile)
 		
 		dic = {	"on_button_ok_clicked":self.on_clicked_ok,
 			"on_button_cancel_clicked":self.on_clicked_cancel,
 		}
 		
-		self.wTree.signal_autoconnect(dic)
+		self.wTree.connect_signals(dic)
 		
-		self.window = self.wTree.get_widget(windowname)
+		self.window = self.wTree.get_object(windowname)
 		
-		self.radio_disabled = self.wTree.get_widget("radio_disabled")
-		self.radio_shutdown = self.wTree.get_widget("radio_shutdown")
-		self.radio_hibernate = self.wTree.get_widget("radio_hibernate")
+		self.radio_disabled = self.wTree.get_object("radio_disabled")
+		self.radio_shutdown = self.wTree.get_object("radio_shutdown")
+		self.radio_hibernate = self.wTree.get_object("radio_hibernate")
 	
 	def show(self, totem_object):
 		self.totem_object = totem_object
 		
-		mode = totem_object.get_data('SleepPluginMode')
+		mode = getattr(totem_object,'SleepPluginMode',None)
+		
 		if mode == SLEEP_MODE_DISABLED or mode == None:
 			self.radio_disabled.set_active(True)
 		
@@ -229,13 +242,14 @@ class ConfigDialog:
 			self.watcher.join()
 		
 		if self.radio_disabled.get_active():
-			self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_DISABLED)
+			self.totem_object.SleepPluginMode = SLEEP_MODE_DISABLED
 		else:
 			if self.radio_shutdown.get_active():
-				self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_SHUTDOWN)
+				self.totem_object.SleepPluginMode = SLEEP_MODE_SHUTDOWN
 		
 			elif self.radio_hibernate.get_active():
-				self.totem_object.set_data('SleepPluginMode', SLEEP_MODE_HIBERNATE)
+				print "Hibernar"
+				self.totem_object.SleepPluginMode = SLEEP_MODE_HIBERNATE
 				
 			if self.watcher.alive:
 				print "error, still there"
