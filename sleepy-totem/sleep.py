@@ -164,19 +164,35 @@ class TimeoutDialog:
 		self.totem_object.SleepPluginMode = SLEEP_MODE_DISABLED
 		
 		if mode == SLEEP_MODE_SHUTDOWN:
-			print "todo shutdown"
+			# Get the D-Bus session bus
+			bus = dbus.SystemBus()
+			# Access the Tomboy D-Bus object
+			obj = bus.get_object('org.freedesktop.ConsoleKit', '/org/freedesktop/ConsoleKit/Manager')
+			
+			# Access the Tomboy remote control interface
+			powerman = dbus.Interface(obj, "org.freedesktop.ConsoleKit.Manager")
+			
+			if powerman.CanStop():
+				powerman.Stop()
+			else :
+				print "The system cant shutdown"
 		
 		elif mode == SLEEP_MODE_HIBERNATE:
-			if TESTING:
-				print "TEST MODE: We would hibernate here. zzzzz."
-			else:
-				# Get the D-Bus session bus
-				bus = dbus.SessionBus()
-				# Access the Tomboy D-Bus object
-				obj = bus.get_object("org.freedesktop.PowerManagement", "/org/freedesktop/PowerManagement")
-				# Access the Tomboy remote control interface
-				powerman = dbus.Interface(obj, "org.freedesktop.PowerManagement")
+			# Get the D-Bus session bus
+			bus = dbus.SystemBus()
+			# Access the Tomboy D-Bus object
+			obj = bus.get_object("org.freedesktop.UPower", "/org/freedesktop/UPower")
+			
+			
+			# Access the Tomboy remote control interface
+			powerman = dbus.Interface(obj, "org.freedesktop.UPower")
+			
+			if powerman.HibernateAllowed():
 				powerman.Hibernate()
+			else :
+				print "The system cant hibernate"
+			
+				
 	
 	def on_clicked_now(self, widget):
 		if self.countdown.alive:
