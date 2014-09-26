@@ -293,6 +293,9 @@ class WatcherThread(threading.Thread):
 	
 	def run(self):
 		self.alive = True
+		while not  self.totem_object.get_playlist_length() :
+			time.sleep(POLLING_PERIOD)
+			
 		while self.alive:
 			
 			# If we are playing a DVD then we can't simply check that that playback has finished because 
