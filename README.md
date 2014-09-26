@@ -22,7 +22,7 @@ A new menu "Sleep" should now be added to Totem. It takes immediate effect (for 
 TODO
 
 - [x] Fix thread joining to allow stopping sleep mode and starting again (from either pre or post timeout dialog)
-- [ ] Prevent events from firing up if playlist is empty
+- [x] Prevent events from firing up if playlist is empty
 - [ ] Turn choice into a setting to be used afterwards instead of taking immediate effect
 - [ ] Get some nice tickable gtk menus
 - [ ] Move timeout to config box
