@@ -6,7 +6,7 @@ from __builtin__ import getattr
 # Seconds between checks of Totem state
 POLLING_PERIOD = 5
 # Seconds warning dialog is displayed before action
-WARNING_TIMEOUT = 120
+WARNING_TIMEOUT = 5
 
 # Enable testing mode (does not call real action)
 #TESTING = True
@@ -32,6 +32,9 @@ ui_str = """
 
 
 def human_time(seconds):
+	
+	if seconds == 0 :
+		return seconds;
 	"""Return human readable time string from time in seconds"""
 	hours = int( math.floor(seconds / 3600.0) )
 	seconds = seconds - hours * 3600
@@ -74,9 +77,9 @@ class SleepPlugin(GObject.Object, Peas.Activatable):
 	def __init__(self):
 		GObject.Object.__init__(self)
 		self._totem = None
-	
-	def do_activate(self):
 		
+	def do_activate(self):
+		print "Deu init"
 		self._totem = self.object
 		totem_object = self.object
 		
@@ -98,12 +101,11 @@ class SleepPlugin(GObject.Object, Peas.Activatable):
 		manager.ensure_update()
 		
 		totem_object.ShutdownPluginInfo = data
-		
+	
+	def show_config(self, action, totem_object):
 		self.timeout_dialog = TimeoutDialog(totem_object)
 		self.watcher = WatcherThread(totem_object, self.timeout_dialog)
 		self.config_dialog = ConfigDialog(self.watcher)
-	
-	def show_config(self, action, totem_object):
 		self.config_dialog.show(totem_object)
 	
 	def do_deactivate(self):
@@ -309,6 +311,7 @@ class WatcherThread(threading.Thread):
 				break
 			
 			time.sleep(POLLING_PERIOD)
+		return;
 		
 	def terminate(self):
 		self.alive = False
@@ -335,9 +338,3 @@ class CountdownThread(threading.Thread):
 	
 	def terminate(self):
 		self.alive = False
-
-
-
-
-
-
