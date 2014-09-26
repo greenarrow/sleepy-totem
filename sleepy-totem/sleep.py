@@ -6,7 +6,7 @@ from __builtin__ import getattr
 # Seconds between checks of Totem state
 POLLING_PERIOD = 5
 # Seconds warning dialog is displayed before action
-WARNING_TIMEOUT = 5
+WARNING_TIMEOUT = 120
 
 # Enable testing mode (does not call real action)
 #TESTING = True
