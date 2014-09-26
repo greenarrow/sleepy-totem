@@ -33,7 +33,7 @@ ui_str = """
 
 def human_time(seconds):
 	
-	if seconds == 0 :
+	if not seconds :
 		return seconds;
 	"""Return human readable time string from time in seconds"""
 	hours = int( math.floor(seconds / 3600.0) )
@@ -79,7 +79,6 @@ class SleepPlugin(GObject.Object, Peas.Activatable):
 		self._totem = None
 		
 	def do_activate(self):
-		print "Deu init"
 		self._totem = self.object
 		totem_object = self.object
 		
@@ -240,7 +239,7 @@ class ConfigDialog:
 	def show(self, totem_object):
 		self.totem_object = totem_object
 		
-		mode = getattr(totem_object,'SleepPluginMode',None)
+		mode = getattr(self.totem_object,'SleepPluginMode',None)
 		
 		if mode == SLEEP_MODE_DISABLED or mode == None:
 			self.radio_disabled.set_active(True)
@@ -266,7 +265,6 @@ class ConfigDialog:
 				self.totem_object.SleepPluginMode = SLEEP_MODE_SHUTDOWN
 		
 			elif self.radio_hibernate.get_active():
-				print "Hibernar"
 				self.totem_object.SleepPluginMode = SLEEP_MODE_HIBERNATE
 				
 			if self.watcher.alive:
